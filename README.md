@@ -1,6 +1,6 @@
 # LWXBot
 Lagrange机器人框架适配器，使用springboot进行封装
-在使用之前，你已经安装部署好了Lagrange程序并成功运行
+在使用之前，你已经安装部署好了Lagrange程序并成功运行(如发现代码有更新，请自行打包或者下载本项目运行即可，因为jar不一定是最新的)
 ## 使用方法
 1. 安装Lagrange<a href="https://github.com/LagrangeDev/Lagrange.Core/blob/master/Docker_zh.md#%E5%BC%80%E5%A7%8B%E4%BD%BF%E7%94%A8">传送</a>
    并运行

@@ -267,7 +267,7 @@ public class OneBotEventHandler {
                     //普通消息
                     GroupMessage message = new GroupMessage(jsonObject, groupId, selfId);
                     body = message;
-                    text = LwxUtil.getTextTrim(message.getMessage());
+                    text = LwxUtil.getText(message.getMessage());
                 }
             }
             case "other"->{}
@@ -278,6 +278,7 @@ public class OneBotEventHandler {
         }
         invokeMessage(body,text);
     }
+
     private void invokeMessage(MessageBody body, String text) throws InvocationTargetException, IllegalAccessException {
         if (body instanceof GroupMessage g){
             Map<Method, Object>  map = eventMap.getOrDefault(GroupMessageEvent.class,new HashMap<>());
@@ -285,7 +286,6 @@ public class OneBotEventHandler {
             Map<Method, Object> listenerGroup =new HashMap<>();
             map.entrySet().stream().filter(e -> e.getKey().getAnnotation(GroupMessageEvent.class) != null && g.getGroupId().equals(e.getKey().getAnnotation(GroupMessageEvent.class).listenerGroup()))
                     .forEach(e-> listenerGroup.put(e.getKey(),e.getValue()));
-
             if (!listenerGroup.isEmpty() && execGroup(listenerGroup,body,text)){
                 return;
             }
@@ -296,12 +296,79 @@ public class OneBotEventHandler {
             execGroup(group,body,text);
         } else if (body instanceof FriendMessage){
             Map<Method, Object> map = eventMap.getOrDefault(FriendMessageEvent.class,new HashMap<>(4));
+            execPrivate(map,body,text,1);
         }else {
             Map<Method, Object> map = eventMap.getOrDefault(TemporaryMessageEvent.class,new HashMap<>(4));
+            execPrivate(map,body,text,2);
         }
     }
 
+    private void execPrivate(Map<Method, Object> group, MessageBody body, String text,int type) throws InvocationTargetException, IllegalAccessException {
+        if (group.isEmpty()){
+            return;
+        }
+        Map<Method, Object> map = new HashMap<>(group.size());
+        if (type == 1){
+            group.entrySet().stream().filter(e ->!e.getKey().getAnnotation(FriendMessageEvent.class).matcher().isEmpty())
+                    .forEach(e->map.put(e.getKey(),e.getValue()));
+        }else{
+            group.entrySet().stream().filter(e ->e.getKey().getAnnotation(TemporaryMessageEvent.class).matcher().isEmpty())
+                    .forEach(e->map.put(e.getKey(),e.getValue()));
+        }
+        if (!map.isEmpty() && invokePrivate(map, body, text, type)) {
+            return ;
+        }
+        if (type == 1){
+            group.entrySet().stream().filter(e ->e.getKey().isAnnotationPresent(FriendMessageEvent.class))
+                    .forEach(e->map.put(e.getKey(),e.getValue()));
+        }else{
+            group.entrySet().stream().filter(e ->e.getKey().isAnnotationPresent(TemporaryMessageEvent.class))
+                    .forEach(e->map.put(e.getKey(),e.getValue()));
+        }
+        invokePrivate(group,body,text,type);
+    }
+
+    private boolean invokePrivate(Map<Method, Object> group, MessageBody body, String text, int type) throws InvocationTargetException, IllegalAccessException {
+        for (Map.Entry<Method, Object> entry : group.entrySet()) {
+            Object bean = entry.getValue();
+            Method method = entry.getKey();
+            Matcher matcher = null;
+            String regx = null;
+            if (type == 1){
+                FriendMessageEvent annotation = method.getAnnotation(FriendMessageEvent.class);
+                regx = annotation.matcher();
+            }else{
+                TemporaryMessageEvent annotation = method.getAnnotation(TemporaryMessageEvent.class);
+                regx = annotation.matcher();
+            }
+            if (!regx.isEmpty()){
+                matcher = matcher(text,regx);
+                if (matcher != null) {
+                    execInvoke(method,bean,body,matcher);
+                    return true;
+                }
+                continue;
+            }
+            execInvoke(method,bean,body,matcher);
+            return true;
+        }
+        return false;
+    }
+
+
+
     private boolean execGroup(Map<Method, Object> group, MessageBody body, String text) throws InvocationTargetException, IllegalAccessException {
+        Map<Method, Object> map = new HashMap<>(group.size());
+        group.entrySet().stream().filter(e ->!e.getKey().getAnnotation(GroupMessageEvent.class).matcher().isEmpty())
+                .forEach(e->map.put(e.getKey(),e.getValue()));
+        if (!map.isEmpty() && invokeGroup(map, body, text)) {
+            return true;
+        }
+        group.entrySet().stream().filter(e ->e.getKey().getAnnotation(GroupMessageEvent.class).matcher().isEmpty())
+                .forEach(e->map.put(e.getKey(),e.getValue()));
+        return invokeGroup(group,body,text);
+    }
+    private boolean invokeGroup(Map<Method, Object> group, MessageBody body, String text) throws InvocationTargetException, IllegalAccessException {
         for (Map.Entry<Method, Object> entry : group.entrySet()) {
             Object bean = entry.getValue();
             Method method = entry.getKey();
@@ -322,8 +389,9 @@ public class OneBotEventHandler {
         else if (messageEvent.atAll() && !LwxUtil.isAtAll(groupMessage.getMessage())){
             return false;
         }
+        matcher = matcher(text,messageEvent.matcher());
+
         if (!messageEvent.matcher().isEmpty()) {
-            matcher = matcher(text,messageEvent.matcher());
             if (matcher != null) {
                 execInvoke(method,bean,body,matcher);
                 return true;
